@@ -1,0 +1,134 @@
+import numpy as np
+import math
+FL = 0.2  
+FD = 0.1 
+
+def split_array_permutation(dim):
+    original_array = np.ones(dim)
+    num_ones_1 = np.random.randint(1, dim - 1)
+    num_ones_2 = np.random.randint(1, dim - num_ones_1)
+    num_ones_3 = dim - num_ones_1 - num_ones_2
+    perm = np.random.permutation(dim)
+
+    positions_1 = perm[:num_ones_1]
+    positions_2 = perm[num_ones_1:num_ones_1 + num_ones_2]
+    positions_3 = perm[num_ones_1 + num_ones_2:]
+
+    array1 = np.zeros(dim)
+    array2 = np.zeros(dim)
+    array3 = np.zeros(dim)
+
+    array1[positions_1] = 1
+    array2[positions_2] = 1
+    array3[positions_3] = 1
+    return array1, array2, array3
+
+def initialization(search_agents_no, dim, ub, lb):
+    # Number of boundaries
+    boundary_no = len(ub)
+
+    # If the boundaries of all variables are equal and user enters a single number for both ub and lb
+    if boundary_no == 1:
+        positions = np.random.rand(search_agents_no, dim) * (ub - lb) + lb
+    else:
+        # If each variable has a different lb and ub
+        positions = np.zeros((search_agents_no, dim))
+        for i in range(dim):
+            ub_i = ub[i]
+            lb_i = lb[i]
+            positions[:, i] = np.random.rand(search_agents_no) * (ub_i - lb_i) + lb_i
+
+    return positions
+
+
+def CLO_2017(pop_size, tmax, ub, lb, dim, f):
+    conv_curve = np.zeros(tmax)
+
+    # Controlling parameters
+    t = 0  # Function evaluation counter
+
+    # Initialization
+    x = initialization(pop_size, dim, ub, lb)  # Initialize the positions of crested porcupines
+
+    # Evaluation
+    fitness = np.zeros(pop_size)
+    for i in range(pop_size):
+        fitness[i] = f(x[i, :][np.newaxis, :])
+
+    # Update the best-so-far solution
+    gb_fit = x[np.argmin(fitness), :]
+    gb_sol = fitness[np.argmin(fitness)]
+
+    xp = x.copy() 
+    best_F = np.inf
+    best_Sol = np.ones(dim) * np.inf
+
+    # Optimization Process of CLO
+    while t < tmax:
+        for i in range(pop_size):
+            ll = np.random.choice(range(pop_size), size=3, replace=False)
+
+            if t % 2==0 and (t<300 or t>700): 
+                # num = np.random.randint(low=1, high=dim)
+                # D = np.zeros(dim)
+                # D[np.random.choice(dim, num, replace=False)] = 1
+                if dim==2:
+                    angle = np.random.uniform(0, 2 * np.pi)
+                    distance = np.random.uniform(0, 2) * (1 - t / tmax)
+                    x[i, 0] += distance * np.cos(angle) * np.random.random() * np.random.uniform(0, 2)
+                    x[i, 1] += distance * np.sin(angle) * np.random.random() * np.random.uniform(0, 2)
+                else:
+                    HP = 1
+                    if np.random.random()<0.2:
+                        HP =  0
+                    array1, array2, array3 = split_array_permutation(dim)
+                    x[i, :] = array1 * x[i, :].copy() + array2 * (x[ll[1], :].copy() + HP * np.random.uniform(0, 2, dim) * (
+                                x[ll[2], :] - x[ll[0], :])) + array3 * (x[ll[2], :].copy()+ (1-HP) * np.random.normal(loc=0.0, scale=10) * (x[ll[0], :] - x[ll[1], :]))
+
+            else:
+                AP = 0.5 
+                if np.random.random() < 0.5:  # AP = 0.5  
+                    # self.update_diving(idx, iteration)
+                    A = 2 * AP * (1 - t / tmax)  
+                    if np.random.random() < 0.5:  # 0 -> 1                     
+                        x[i] = best_Sol.copy() + np.random.randn(1, dim) * A + np.random.random() * (x[ll[0]] - x[ll[1]])
+                    else:
+                        random_serval = x[np.random.randint(pop_size)].copy()
+                        x[i] = random_serval.copy() + np.random.randn(1, dim) * A * + np.random.random() * (x[ll[0]] - x[ll[1]])
+                else:
+                    r1 = np.random.random()
+                    r2 = np.random.random()
+                    velocities = (FL * r1 * (best_Sol.copy() - x[i]) +
+                                  FD * r2 * (x[np.random.randint(pop_size)].copy() - x[i]))
+
+                    x[i] = x[i].copy() + velocities
+
+            for j in range(dim):
+                if x[i, j] > ub[j]:
+                    x[i, j] = lb[j] + np.random.rand() * (ub[j] - lb[j])
+                elif x[i, j] < lb[j]:
+                    x[i, j] = lb[j] + np.random.rand() * (ub[j] - lb[j])
+
+                    # Calculate the fitness value of the newly generated solution
+            nf = f(x[i, :][np.newaxis, :])
+            # print(fitness[i])
+
+            # Update Global & Personal best solution
+            if fitness[i] < nf[0]:
+                x[i, :] = xp[i, :]  # Update local best solution
+            else:
+                xp[i, :] = x[i, :]
+                fitness[i] = nf[0]
+                # if fitness[i] <= gb_fit[np.argmin(fitness[i] - gb_fit)]:
+                #     gb_sol = x[i, :]  # Update global best solution
+                #     gb_fit = fitness[i]
+
+            if fitness[i] < best_F:
+                best_F = fitness[i]
+                best_Sol = xp[i, :].copy()
+
+        conv_curve[t] = best_F  # Simplification for single-objective case
+        t += 1  # Move to the next generation
+
+    return best_F, best_Sol, conv_curve
+
